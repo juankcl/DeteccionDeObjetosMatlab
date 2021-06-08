@@ -13,8 +13,7 @@ background = readFrame(vidObj);
 background = rgb2hsv(background);
 
 % Sensibilidad de la mascara a partir del promedio
-sens = mean2(background(:,:,3));
-sens = sens - sens * 0.25;
+sens = 0.35;
 
 [u, v, ch] = size(background);
 
@@ -26,15 +25,24 @@ background = imfilter(background(:,:,3), hFilter, 'replicate');
 
 % Calcular el rectangulo para recortar la imagen
 % TODO: Cambiar las proporciones del rectangulo si la imagen es vertical
+if v > u
+    fprintf('Horizontal\n');
 sizeCrop = [u*0.75 v*0.3];
+else
+    fprintf('Vertical\n');
+    sizeCrop = [u*0.3 v*0.75];
+end
 cropRectangle = centerCropWindow2d(size(background), sizeCrop);
 
 % Cambiar tiempo
-vidObj.CurrentTime = 0.0;
+vidObj.CurrentTime = 8.0;
 
 % Variable para erosionar durante el while
-erode = strel('diamond', 2);
+erode = strel('diamond', 1);
 
+% Variables de conteo
+totalNumObjs = 0;
+pastNumObjs = 0;
 
 while hasFrame(vidObj)
     
@@ -57,14 +65,20 @@ while hasFrame(vidObj)
     imgMask(objetos > sens) = 1;
     
     imgMask = imdilate(imgMask, erode);
-    imgMask = bwareafilt(imgMask, [400 4000]);
     imgMask = imerode(imgMask, erode);
     imgMask = imfill(imgMask, 'holes');
+    imgMask = bwareafilt(imgMask, [650 5000]);
+    
     
     % Sacar cuadros de interes
-    bBoxes = regionprops(imgMask);
+    pf = regionprops(imgMask);
     
-    
+    numObjs = length(pf);
+    restaObjs = numObjs - pastNumObjs;
+    if restaObjs > 0
+        totalNumObjs = totalNumObjs + restaObjs;
+    end
+    pastNumObjs = numObjs;
     
     % Mostrar resultados
     figure(1);
@@ -75,8 +89,6 @@ while hasFrame(vidObj)
     subplot(3,2,2)
     imshow(vidFrame(:,:,3))
     title('Entrada')
-    %H
-    pf = regionprops(imgMask);
    
     [k,t] = size(pf);
     if k>0 && k <2 
@@ -126,6 +138,7 @@ while hasFrame(vidObj)
     
     subplot(3,2,6)
     imshow(original)
+    title('Imagen color. Total: ' + string(totalNumObjs))
     hold on;
     %Condiciones de asignacion de target
     if size(pf) > 0 
@@ -172,8 +185,6 @@ while hasFrame(vidObj)
             text(colocar(1),colocar(2),str)
         end
     end
-%     imshow(original)
-    title('imagen color')
     
 
 end
