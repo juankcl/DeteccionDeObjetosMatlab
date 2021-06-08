@@ -5,7 +5,7 @@ clear all;
 warning('off', 'images:label2rgb:zerocolorSameAsRegionColor');
 
 % Leer frame
-vidObj = VideoReader('Video_1_mini.mp4');
+vidObj = VideoReader('Video_3_cropped.mp4');
 
 % Sacar fondo
 vidObj.CurrentTime = 0.0;
@@ -25,12 +25,15 @@ background = imfilter(background(:,:,3), hFilter, 'replicate');
 
 % Calcular el rectangulo para recortar la imagen
 % TODO: Cambiar las proporciones del rectangulo si la imagen es vertical
+rotate = false;
 if v > u
     fprintf('Horizontal\n');
     sizeCrop = [u*0.8 v*0.5];
 else
     fprintf('Vertical\n');
     sizeCrop = [u*0.5 v*0.8];
+    background = imrotate(background, 90);
+    rotate = true;
 end
 sizeCrop = ceil(sizeCrop);
 cropRectangle = centerCropWindow2d(size(background), sizeCrop);
@@ -76,6 +79,11 @@ pastFrame = background;
 while hasFrame(vidObj)
     
     vidFrame = readFrame(vidObj);
+    
+    if rotate
+        vidFrame = imrotate(vidFrame, 90);
+    end
+    
     original = imcrop(vidFrame, cropRectangle);
     
     tic;
