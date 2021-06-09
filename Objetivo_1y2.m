@@ -5,7 +5,7 @@ clear all;
 warning('off', 'images:label2rgb:zerocolorSameAsRegionColor');
 
 % Leer frame
-vidObj = VideoReader('Video_2_mini.mp4');
+vidObj = VideoReader('Video_1_mini.mp4');
 
 % Sacar fondo
 vidObj.CurrentTime = 0.0; % NO CAMBIAR ESTE
@@ -39,7 +39,7 @@ sizeCrop = ceil(sizeCrop);
 cropRectangle = centerCropWindow2d(size(background), sizeCrop);
 
 % Cambiar tiempo
-vidObj.CurrentTime = 7.4;
+vidObj.CurrentTime = 0.0;
 
 % Variable para erosionar durante el while
 erode = strel('diamond', 1);
@@ -79,9 +79,16 @@ hTextDedos = text(0,0,'','Color','red','Parent',hAxesDedos);
 title('imagen color Dedos');
 
 pastFrame = background;
+
+%delete(gcp('nocreate'));
+%parpool('threads');
+meanTimeCounter = 1;
+time = 0;
+tic;
+toc;
 while hasFrame(vidObj)
-    
-    vidFrame = readFrame(vidObj);
+    tic;
+    vidFrame = gpuArray(readFrame(vidObj));
     
     if rotate
         vidFrame = imrotate(vidFrame, 90);
@@ -89,7 +96,7 @@ while hasFrame(vidObj)
     
     original = imcrop(vidFrame, cropRectangle);
     
-    tic;
+    
     vidFrame = rgb2hsv(vidFrame);
     frameRGB = imcrop(rgb2gray(vidFrame), cropRectangle);
     objetos = imfilter(vidFrame(:,:,3), hFilter, 'replicate');
@@ -117,24 +124,6 @@ while hasFrame(vidObj)
     % Sacar cuadros de interes
     pf = regionprops(imgMask);
     
-    
-    % Debug para contar objetos (quitar luego)
-    figure(99)
-    imshow(objetos);
-    hold on;
-    text(10,10,'Total: ' + string(totalNumObjs), 'Color', 'red');
-    text(10,50,'Past: ' + string(pastNumObjs), 'Color', 'red');
-    
-    plot([countArea(1) countArea(1)], [0 500], 'r');
-    plot([countArea(2) countArea(2)], [0 500], 'g');
-    plot([countArea(3) countArea(3)], [0 500], 'b');
-    
-    for index = 1:length(pf)
-        plot(pf(index).Centroid(1), pf(index).Centroid(2), 'ro');
-    end
-    
-    hold off;
-    
     % Contar objetos (obj 3)
     numObjs = 0;
 
@@ -152,13 +141,11 @@ while hasFrame(vidObj)
     
     if (length(centroidsR) ~= length(pastCentroidsR) && ...
         length(centroidsL) ~= length(pastCentroidsL))
-        for index = 1:size(centroidsL)
+        parfor index = 1:size(centroidsL,1)
             numObjs = numObjs + compareCentroids(centroidsL(index,:), pastCentroidsR, sizeCountArea);
         end
     end
     
-    pastNumObjs
-    numObjs
     pastCentroidsL = centroidsL;
     pastCentroidsR = centroidsR;
     
@@ -206,12 +193,12 @@ while hasFrame(vidObj)
 
    imcr = imFsp > max (max(imFsp))*0.9999;
     
-    set(hImagesMain(1), 'CData', vidFrame(:,:,3));
-    set(hImagesMain(2), 'CData', objetos);
-    set(hImagesMain(3), 'CData', single(imFsp));
-    set(hAxesMain(3), 'CLim', [0, max(max(imFsp)) + 0.1]);
+    set(hImagesMain(1), 'CData', gather(vidFrame(:,:,3)));
+    set(hImagesMain(2), 'CData', gather(objetos));
+    set(hImagesMain(3), 'CData', gather(single(imFsp)));
+    set(hAxesMain(3), 'CLim', [0, max(max(gather(imFsp))) + 0.1]);
     
-    set(hImagesMain(5), 'CData', original);
+    set(hImagesMain(5), 'CData', gather(original));
     set(get(hAxesMain(5), 'Title'), 'String', 'Resultado. Total: ' + string(totalNumObjs));
     
     rect = findall(hAxesMain(5),'Type', 'Rectangle'); 
@@ -223,9 +210,8 @@ while hasFrame(vidObj)
     
     %Condiciones de asignacion de target
     if size(pf) > 0
-        set(get(hAxesMain(2), 'Title'), 'String', 'Objetos, area: ' + string(pf(1).Area));
         
-        for index = 1:size(pf)
+        for index = 1:size(pf,1)
             rectangle('Position', pf(index).BoundingBox,'EdgeColor','r','Curvature',0.2, 'Parent', hAxesMain(5));
         end
 
@@ -243,16 +229,16 @@ while hasFrame(vidObj)
             punto2X = xMax + ceil(pf.BoundingBox(3)/2);
             %Si X < que Y
             if pf.BoundingBox(3) < pf.BoundingBox(4)
-                originalA = insertShape(original,'circle',[xMin punto1Y 5],'LineWidth',2);
-                originalD = insertShape(originalA,'circle',[xMax punto1Y 5],'LineWidth',2);
+                originalA = insertShape(gather(original),'circle',[xMin punto1Y 5],'LineWidth',2);
+                originalD = insertShape(gather(originalA),'circle',[xMax punto1Y 5],'LineWidth',2);
                 clc;
                 %Distancia en X
                 distancia = xMax - xMin;
                 disp( distancia);
             else
             %de lo contrario
-                originalA = insertShape(original,'circle',[punto1X yMin 5],'LineWidth',2);
-                originalD = insertShape(originalA,'circle',[punto1X yMax 5],'LineWidth',2);
+                originalA = insertShape(gather(original),'circle',[punto1X yMin 5],'LineWidth',2);
+                originalD = insertShape(gather(originalA),'circle',[punto1X yMax 5],'LineWidth',2);
                 clc;
                 distancia = yMax - yMin;
                 disp(distancia);
@@ -271,7 +257,9 @@ while hasFrame(vidObj)
         end
     end
     
-    time = toc
+    time = time + toc;
+    meanTime = time / meanTimeCounter
+    meanTimeCounter = meanTimeCounter + 1;
     pause(0.1);
     %pause((1/vidObj.FrameRate) - time);
 end
