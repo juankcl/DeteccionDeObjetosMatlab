@@ -5,10 +5,10 @@ clear all;
 warning('off', 'images:label2rgb:zerocolorSameAsRegionColor');
 
 % Leer frame
-vidObj = VideoReader('Video_3_cropped.mp4');
+vidObj = VideoReader('Video_2_mini.mp4');
 
 % Sacar fondo
-vidObj.CurrentTime = 0.0;
+vidObj.CurrentTime = 0.0; % NO CAMBIAR ESTE
 background = readFrame(vidObj);
 background = rgb2hsv(background);
 
@@ -39,15 +39,18 @@ sizeCrop = ceil(sizeCrop);
 cropRectangle = centerCropWindow2d(size(background), sizeCrop);
 
 % Cambiar tiempo
-vidObj.CurrentTime = 0.5;
+vidObj.CurrentTime = 7.4;
 
 % Variable para erosionar durante el while
 erode = strel('diamond', 1);
 
 % Variables de conteo
-countArea = [(sizeCrop(2)/2) (sizeCrop(2)/2) + 20];
+sizeCountArea = 40;
+countArea = [(sizeCrop(2)/2) - sizeCountArea, (sizeCrop(2)/2), (sizeCrop(2)/2) + sizeCountArea];
 totalNumObjs = 0;
 pastNumObjs = 0;
+pastCentroidsR = [];
+pastCentroidsL = [];
 
 % Interfaz
 % Principal
@@ -114,14 +117,59 @@ while hasFrame(vidObj)
     % Sacar cuadros de interes
     pf = regionprops(imgMask);
     
-    numObjs = length(pf);
+    
+    % Debug para contar objetos (quitar luego)
+    figure(99)
+    imshow(objetos);
+    hold on;
+    text(10,10,'Total: ' + string(totalNumObjs), 'Color', 'red');
+    text(10,50,'Past: ' + string(pastNumObjs), 'Color', 'red');
+    
+    plot([countArea(1) countArea(1)], [0 500], 'r');
+    plot([countArea(2) countArea(2)], [0 500], 'g');
+    plot([countArea(3) countArea(3)], [0 500], 'b');
+    
+    for index = 1:length(pf)
+        plot(pf(index).Centroid(1), pf(index).Centroid(2), 'ro');
+    end
+    
+    hold off;
+    
+    % Contar objetos (obj 3)
+    numObjs = 0;
+
+    centroidsL = [];
+    centroidsR = [];
+    for index = 1:length(pf)
+        if ((pf(index).Centroid(1) > countArea(1)) && (pf(index).Centroid(1) < countArea(2)))
+            centroidsL(end + 1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];          
+            numObjs = numObjs + 1;
+        elseif ((pf(index).Centroid(1) > countArea(2)) && (pf(index).Centroid(1) < countArea(3)))
+            centroidsR(end + 1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];
+            numObjs = numObjs + 1;
+        end
+    end
+    
+    if (length(centroidsR) ~= length(pastCentroidsR) && ...
+        length(centroidsL) ~= length(pastCentroidsL))
+        for index = 1:size(centroidsL)
+            numObjs = numObjs + compareCentroids(centroidsL(index,:), pastCentroidsR, sizeCountArea);
+        end
+    end
+    
+    pastNumObjs
+    numObjs
+    pastCentroidsL = centroidsL;
+    pastCentroidsR = centroidsR;
+    
     restaObjs = numObjs - pastNumObjs;
     if restaObjs > 0
         totalNumObjs = totalNumObjs + restaObjs;
     end
     pastNumObjs = numObjs;
     
-   
+
+    % Cosa del target
     [k,t] = size(pf);
     if k>0 && k <2 
         if pf.Area > 500 && pf.Area<2700
@@ -174,7 +222,9 @@ while hasFrame(vidObj)
     
     
     %Condiciones de asignacion de target
-    if size(pf) > 0 
+    if size(pf) > 0
+        set(get(hAxesMain(2), 'Title'), 'String', 'Objetos, area: ' + string(pf(1).Area));
+        
         for index = 1:size(pf)
             rectangle('Position', pf(index).BoundingBox,'EdgeColor','r','Curvature',0.2, 'Parent', hAxesMain(5));
         end
