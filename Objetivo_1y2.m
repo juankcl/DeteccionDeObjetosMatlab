@@ -1,11 +1,11 @@
 close all;
 clc;
-clear all;
+clear global;
 
 warning('off', 'images:label2rgb:zerocolorSameAsRegionColor');
 
 % Leer frame
-vidObj = VideoReader('Video_1_mini.mp4');
+vidObj = VideoReader('Video_3_cropped.mp4');
 
 % Sacar fondo
 vidObj.CurrentTime = 0.0; % NO CAMBIAR ESTE
@@ -51,6 +51,8 @@ totalNumObjs = 0;
 pastNumObjs = 0;
 pastCentroidsR = [];
 pastCentroidsL = [];
+pastCounterR = 1;
+pastCounterL = 1;
 
 % Interfaz
 % Principal
@@ -65,7 +67,7 @@ hImagesMain = [
 ];
 
 set(get(hAxesMain(1), 'Title'), 'String', 'Entrada');
-set(get(hAxesMain(2), 'Title'), 'String', 'Objetos');
+set(get(hAxesMain(2), 'Title'), 'String', 'Máscara objetos');
 set(get(hAxesMain(3), 'Title'), 'String', 'Salida imagen correlacionada');
 set(get(hAxesMain(4), 'Title'), 'String', 'Target');
 set(get(hAxesMain(5), 'Title'), 'String', 'Resultado. Total: 0');
@@ -84,8 +86,7 @@ pastFrame = background;
 %parpool('threads');
 meanTimeCounter = 1;
 time = 0;
-tic;
-toc;
+timeData = [];
 while hasFrame(vidObj)
     tic;
     vidFrame = gpuArray(readFrame(vidObj));
@@ -114,7 +115,7 @@ while hasFrame(vidObj)
     imgMask(objetos > sens) = 1;
     
     imgMask = imdilate(imgMask, erode);
-    imgMask = bwareafilt(imgMask, [400 5000]);
+    imgMask = bwareaopen(imgMask, 400);
     imgMask = imerode(imgMask, erode);
     imgMask = imfill(imgMask, 'holes');
     
@@ -127,27 +128,34 @@ while hasFrame(vidObj)
     % Contar objetos (obj 3)
     numObjs = 0;
 
-    centroidsL = [];
-    centroidsR = [];
+    centroidsL = zeros(10,2);
+    centroidsR = zeros(10,2);
+    counterL = 0;
+    counterR = 0;
     for index = 1:length(pf)
         if ((pf(index).Centroid(1) > countArea(1)) && (pf(index).Centroid(1) < countArea(2)))
-            centroidsL(end + 1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];          
+            centroidsL(counterL+1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];          
             numObjs = numObjs + 1;
+            counterL = counterL + 1;
         elseif ((pf(index).Centroid(1) > countArea(2)) && (pf(index).Centroid(1) < countArea(3)))
-            centroidsR(end + 1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];
+            centroidsR(counterR+1,:) = [pf(index).Centroid(1), pf(index).Centroid(2)];
             numObjs = numObjs + 1;
+            counterR = counterR + 1;
         end
     end
     
-    if (length(centroidsR) ~= length(pastCentroidsR) && ...
-        length(centroidsL) ~= length(pastCentroidsL))
-        parfor index = 1:size(centroidsL,1)
+    if (counterR ~= pastCounterR && ...
+        counterL ~= pastCounterL)
+        parfor index = 1:counterL
             numObjs = numObjs + compareCentroids(centroidsL(index,:), pastCentroidsR, sizeCountArea);
         end
     end
     
     pastCentroidsL = centroidsL;
     pastCentroidsR = centroidsR;
+
+    pastCounterL = counterL;
+    pastCounterR = counterR;
     
     restaObjs = numObjs - pastNumObjs;
     if restaObjs > 0
@@ -194,7 +202,7 @@ while hasFrame(vidObj)
    imcr = imFsp > max (max(imFsp))*0.9999;
     
     set(hImagesMain(1), 'CData', gather(vidFrame(:,:,3)));
-    set(hImagesMain(2), 'CData', gather(objetos));
+    set(hImagesMain(2), 'CData', gather(imgMask));
     set(hImagesMain(3), 'CData', gather(single(imFsp)));
     set(hAxesMain(3), 'CLim', [0, max(max(gather(imFsp))) + 0.1]);
     
@@ -257,9 +265,11 @@ while hasFrame(vidObj)
         end
     end
     
-    time = time + toc;
-    meanTime = time / meanTimeCounter
-    meanTimeCounter = meanTimeCounter + 1;
-    pause(0.1);
-    %pause((1/vidObj.FrameRate) - time);
+    time = toc;
+    timeData(end + 1) = time;
+    pause(0.01);
+    %pause(1/vidObj.Framerate - time);
 end
+
+mean2(timeData(1:end))
+
